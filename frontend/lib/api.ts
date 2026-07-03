@@ -4,6 +4,13 @@
 export const API_BASE: string =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Optional shared token for the backend auth gate (SPEC §14). Empty when the
+// gate is disabled. Sent as a bearer header on fetches; appended as ?token= on
+// the plain-anchor export links, which cannot set headers. Note: NEXT_PUBLIC_*
+// vars are baked into the client bundle, so this is a shared secret suitable
+// for a small/trusted deployment, not per-user auth.
+export const API_TOKEN: string = process.env.NEXT_PUBLIC_API_TOKEN ?? "";
+
 // ---------- Shared shapes ----------
 
 export type AssertionType =
@@ -268,12 +275,20 @@ export function errorMessage(e: unknown): string {
 
 // ---------- Fetch helper ----------
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+function authHeaders(): Record<string, string> {
+  return API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
+}
+
+async function rawRequest(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+        ...init?.headers,
+      },
       cache: "no-store",
     });
   } catch {
@@ -296,8 +311,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(res.status, detail);
   }
+  return res;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await rawRequest(path, init);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
+// List request that also surfaces the X-Total-Count header for pagination UIs.
+async function requestPage<T>(path: string): Promise<Page<T>> {
+  const res = await rawRequest(path);
+  const items = (await res.json()) as T[];
+  const header = res.headers.get("X-Total-Count");
+  const total = header !== null ? Number(header) : items.length;
+  return { items, total: Number.isFinite(total) ? total : items.length };
 }
 
 // ---------- API surface ----------
@@ -343,10 +377,29 @@ export const api = {
       suiteId !== undefined ? `/api/runs?suite_id=${suiteId}` : "/api/runs",
     ),
 
+  // Paginated variant: returns the page plus the total row count (X-Total-Count).
+  listRunsPage: (opts: {
+    suiteId?: number;
+    limit: number;
+    offset: number;
+  }): Promise<Page<RunListItem>> => {
+    const params = new URLSearchParams();
+    if (opts.suiteId !== undefined) params.set("suite_id", String(opts.suiteId));
+    params.set("limit", String(opts.limit));
+    params.set("offset", String(opts.offset));
+    return requestPage<RunListItem>(`/api/runs?${params.toString()}`);
+  },
+
   getRun: (id: number): Promise<RunDetail> => request(`/api/runs/${id}`),
 
-  exportUrl: (id: number, format: "csv" | "json"): string =>
-    `${API_BASE}/api/runs/${id}/export.${format}`,
+  // Plain link for <a href> downloads; token (when set) rides as a query param
+  // since anchor navigations cannot send an Authorization header.
+  exportUrl: (id: number, format: "csv" | "json"): string => {
+    const suffix = API_TOKEN
+      ? `?token=${encodeURIComponent(API_TOKEN)}`
+      : "";
+    return `${API_BASE}/api/runs/${id}/export.${format}${suffix}`;
+  },
 
   compare: (runA: number, runB: number): Promise<CompareResponse> =>
     request(`/api/compare?run_a=${runA}&run_b=${runB}`),

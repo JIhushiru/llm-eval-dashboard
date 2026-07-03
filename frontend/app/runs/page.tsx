@@ -4,20 +4,35 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, errorMessage, isNetworkError } from "@/lib/api";
-import type { RunListItem, SuiteListItem } from "@/lib/api";
+import type { Page, RunListItem, SuiteListItem } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { formatDateTime } from "@/lib/format";
 import BackendDown from "@/components/BackendDown";
 import StatusBadge from "@/components/StatusBadge";
 
+const PAGE_SIZE = 20;
+
 export default function RunsPage() {
   const router = useRouter();
   const suites = useApi<SuiteListItem[]>(() => api.listSuites(), []);
   const [suiteFilter, setSuiteFilter] = useState<number | "">("");
-  const runs = useApi<RunListItem[]>(
-    () => api.listRuns(suiteFilter === "" ? undefined : suiteFilter),
-    [suiteFilter],
+  const [page, setPage] = useState(0);
+  const runs = useApi<Page<RunListItem>>(
+    () =>
+      api.listRunsPage({
+        suiteId: suiteFilter === "" ? undefined : suiteFilter,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      }),
+    [suiteFilter, page],
   );
+
+  const items = runs.data?.items ?? [];
+  const total = runs.data?.total ?? 0;
+  const rangeStart = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const rangeEnd = page * PAGE_SIZE + items.length;
+  const hasPrev = page > 0;
+  const hasNext = (page + 1) * PAGE_SIZE < total;
 
   return (
     <div className="space-y-6">
@@ -27,9 +42,10 @@ export default function RunsPage() {
           Suite
           <select
             value={suiteFilter}
-            onChange={(e) =>
-              setSuiteFilter(e.target.value === "" ? "" : Number(e.target.value))
-            }
+            onChange={(e) => {
+              setSuiteFilter(e.target.value === "" ? "" : Number(e.target.value));
+              setPage(0);
+            }}
             className="rounded-md border border-hairline bg-surface px-3 py-1.5 text-sm text-ink"
           >
             <option value="">All suites</option>
@@ -48,7 +64,7 @@ export default function RunsPage() {
         <p className="text-sm text-critical">{errorMessage(runs.error)}</p>
       )}
 
-      {runs.data && runs.data.length === 0 && (
+      {runs.data && total === 0 && (
         <p className="rounded-xl border border-hairline bg-surface p-6 text-center text-sm text-ink3">
           No runs yet — launch one from a{" "}
           <Link href="/suites" className="font-medium text-accent hover:underline">
@@ -58,7 +74,7 @@ export default function RunsPage() {
         </p>
       )}
 
-      {runs.data && runs.data.length > 0 && (
+      {runs.data && total > 0 && (
         <div className="overflow-x-auto rounded-xl border border-hairline bg-surface">
           <table className="w-full text-left text-sm tabular-nums">
             <thead>
@@ -73,7 +89,7 @@ export default function RunsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
-              {runs.data.map((r) => (
+              {items.map((r) => (
                 <tr
                   key={r.id}
                   onClick={() => router.push(`/runs/${r.id}`)}
@@ -106,6 +122,32 @@ export default function RunsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {runs.data && total > 0 && (
+        <div className="flex items-center justify-between text-sm text-ink2">
+          <span>
+            {rangeStart}–{rangeEnd} of {total}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={!hasPrev}
+              className="rounded-md border border-hairline bg-surface px-3 py-1.5 text-ink disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasNext}
+              className="rounded-md border border-hairline bg-surface px-3 py-1.5 text-ink disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

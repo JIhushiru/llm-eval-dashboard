@@ -8,26 +8,56 @@
 // (`npm run dev` is left to the frontend — inside frontend/ — so the two don't
 // get confused.) Backend -> http://localhost:8000   Frontend -> http://localhost:3000
 //
-// If port 8000 is taken (or Windows has it in a reserved range — the symptom is
-// uvicorn's "WinError 10013 ... forbidden by its access permissions"), pick
-// another: `BACKEND_PORT=8010 npm start`. The frontend is pointed at the same
-// port automatically, so the two stay linked. FRONTEND_PORT overrides 3000.
+// Ports self-heal: if 8000/3000 is taken (or Windows has it in a reserved range,
+// which is what causes uvicorn's "WinError 10013 ... forbidden"), the launcher
+// falls forward to the next free port and points the frontend at the backend
+// automatically. Set BACKEND_PORT / FRONTEND_PORT to change the preferred start.
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const isWin = process.platform === "win32";
 
-// Ports. Backend honors BACKEND_PORT (or PORT) so you can dodge a busy/reserved
-// 8000; frontend honors FRONTEND_PORT. The frontend's port is set explicitly on
-// its child env below so Next.js (which also reads PORT) can never collide with
-// the backend. The frontend is told the matching API URL so the browser talks
-// to the right backend in dev.
-const backendPort = process.env.BACKEND_PORT ?? process.env.PORT ?? "8000";
-const frontendPort = process.env.FRONTEND_PORT ?? "3000";
+// True if we can actually bind the port on 127.0.0.1. This catches both
+// "already in use" (EADDRINUSE) and Windows' reserved port ranges, which reject
+// the bind with EACCES — the exact cause of uvicorn's "WinError 10013".
+function canBind(port) {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => server.close(() => resolve(true)));
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+// Return `preferred` if bindable, else the next free port after it.
+async function findFreePort(preferred, label) {
+  let port = Number(preferred);
+  for (let i = 0; i < 40; i++, port++) {
+    if (await canBind(port)) {
+      if (String(port) !== String(preferred)) {
+        console.log(
+          `\x1b[33m[dev]\x1b[0m ${label} port ${preferred} is unavailable (in use or OS-reserved); using ${port} instead.`,
+        );
+      }
+      return String(port);
+    }
+  }
+  console.error(`\x1b[31m[dev]\x1b[0m no free ${label} port found near ${preferred}.`);
+  process.exit(1);
+}
+
+// Ports. Backend honors BACKEND_PORT (or PORT), frontend honors FRONTEND_PORT;
+// each falls forward to the next free port if the preferred one is taken or
+// OS-reserved. The frontend's port is set explicitly on its child env below so
+// Next.js (which also reads PORT) can never collide with the backend, and the
+// frontend is told the resolved API URL so the browser reaches the backend.
+const backendPort = await findFreePort(process.env.BACKEND_PORT ?? process.env.PORT ?? "8000", "backend");
+const frontendPort = await findFreePort(process.env.FRONTEND_PORT ?? "3000", "frontend");
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? `http://localhost:${backendPort}`;
 
 // The backend runs from its own virtualenv; the interpreter lives under

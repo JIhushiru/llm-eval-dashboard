@@ -3,13 +3,14 @@
 // development. Zero dependencies (Node only), cross-platform. Streams both logs
 // with a colored [backend]/[frontend] prefix; Ctrl+C stops both.
 //
-//   npm run dev        (or: node dev.mjs)
+//   npm start          (or: node dev.mjs)
 //
-// Backend  -> http://localhost:8000   Frontend -> http://localhost:3000
+// (`npm run dev` is left to the frontend — inside frontend/ — so the two don't
+// get confused.) Backend -> http://localhost:8000   Frontend -> http://localhost:3000
 //
 // If port 8000 is taken (or Windows has it in a reserved range — the symptom is
 // uvicorn's "WinError 10013 ... forbidden by its access permissions"), pick
-// another: `BACKEND_PORT=8010 npm run dev`. The frontend is pointed at the same
+// another: `BACKEND_PORT=8010 npm start`. The frontend is pointed at the same
 // port automatically, so the two stay linked. FRONTEND_PORT overrides 3000.
 
 import { spawn, spawnSync } from "node:child_process";

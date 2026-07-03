@@ -157,7 +157,7 @@ requirements, and `npm install` in `frontend/`), run both together from the
 repo root:
 
 ```bash
-npm run dev
+npm start
 ```
 
 This runs [`dev.mjs`](dev.mjs), a zero-dependency Node launcher (no root
@@ -166,13 +166,16 @@ side by side, streams both logs with a colored `[backend]`/`[frontend]` prefix,
 and stops both on Ctrl+C. Backend → <http://localhost:8000>, frontend →
 <http://localhost:3000>.
 
+(`npm run dev` is intentionally left to mean *frontend only* — run it inside
+`frontend/`. Use `npm start` from the repo root to launch both.)
+
 If 8000 is busy — or Windows has it in a reserved range (uvicorn reports
 `WinError 10013 ... forbidden by its access permissions`) — pick another port;
 the frontend is pointed at it automatically:
 
 ```bash
-BACKEND_PORT=8010 npm run dev      # macOS/Linux, or Git Bash on Windows
-$env:BACKEND_PORT=8010; npm run dev  # PowerShell
+BACKEND_PORT=8010 npm start        # macOS/Linux, or Git Bash on Windows
+$env:BACKEND_PORT=8010; npm start  # PowerShell
 ```
 
 `FRONTEND_PORT` overrides 3000 the same way.

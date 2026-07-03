@@ -336,28 +336,51 @@ Pages:
 ### Chart spec (score-over-time, Recharts)
 
 - One series per model; **fixed categorical palette in slot order (never cycled,
-  color follows the model, not its rank)**:
-  `#2a78d6, #1baf7a, #eda100, #008300, #4a3aa7, #e34948, #e87ba4, #eb6834`.
+  color follows the model, not its rank)**. Each theme has its own validated
+  steps (same hue identity per slot, chosen for that mode's surface — not an
+  auto-flip; both sets pass the categorical-palette checks):
+  - light: `#2a78d6, #1baf7a, #eda100, #008300, #4a3aa7, #e34948, #e87ba4, #eb6834`
+  - dark:  `#3987e5, #199e70, #c98500, #008300, #9085e9, #e66767, #d55181, #d95926`
 - Mean line 2px round; CI band = Recharts `Area` with `dataKey` returning
-  `[ci_low, ci_high]`, filled with the series hue at ~10% opacity, no stroke.
-- Regression points: red dot `#d03b3b` (r≈6, 2px white ring) via custom dot renderer;
-  improvements `#0ca30c`; normal points series-colored r=4 with 2px surface ring.
+  `[ci_low, ci_high]`, filled with the series hue at ~10% opacity (light) / ~14%
+  (dark), no stroke.
+- Regression points: red dot `#d03b3b` (r≈6, 2px ring) via custom dot renderer;
+  improvements `#0ca30c`; normal points series-colored r=4. The ring is the
+  chart **surface** color of the active theme (light `#fcfcfb` / dark `#1a1a19`).
 - X = run (created_at order, tick label = prompt_version), Y domain [1, 5] fixed.
 - Single y-axis only. Legend when ≥ 2 series (none for one). Tooltip on hover:
-  version, date, per-series mean [ci_low–ci_high], flag. Gridlines: 1px solid
-  `#e1e0d9`, recessive; axis line `#c3c2b7`; tick text `#898781` 12px.
+  version, date, per-series mean [ci_low–ci_high], flag. Recessive gridlines 1px
+  (light `#e1e0d9` / dark `#2c2c2a`); axis line (light `#c3c2b7` / dark `#383835`);
+  tick text `#898781` 12px (both). Chrome is selected per resolved theme.
 - Text never wears the series color; labels/values use ink tokens.
 
-### Visual system (light mode)
+### Visual system (theming: light / dark / system)
 
-Page plane `#f9f9f7`; cards/chart surface `#fcfcfb` with hairline border
-`rgba(11,11,11,0.10)`, radius 8–12px; primary ink `#0b0b0b`, secondary `#52514e`,
-muted `#898781`. Status colors (badges/alerts only, never as series colors):
-good `#0ca30c`, warning `#fab219`, serious `#ec835a`, critical `#d03b3b`.
-Status badges = icon/dot + label (never color alone). Font: system-ui sans stack;
-stat-tile values semibold, proportional figures; `tabular-nums` only inside tables.
-Keep chrome quiet — the data is the only loud thing. Accent for interactive elements:
-slot-1 blue `#2a78d6`.
+All colors are semantic tokens defined as CSS custom properties (RGB channels, so
+Tailwind opacity modifiers like `bg-good/10` work) and flipped by a `data-theme`
+attribute on `<html>`. Theme setting ∈ `light | dark | system` (**default system**),
+persisted in `localStorage` under `theme`; `system` tracks `prefers-color-scheme`
+live. A synchronous inline script in the document sets `data-theme` before first
+paint (no flash); a segmented Light/Dark/System toggle sits in the nav.
+
+Token values per theme (dark selected & validated, not an auto-flip):
+
+| Token | Light | Dark |
+| --- | --- | --- |
+| page (plane) | `#f9f9f7` | `#0d0d0d` |
+| surface (cards/chart) | `#fcfcfb` | `#1a1a19` |
+| hairline (border) | `rgba(11,11,11,0.10)` | `rgba(255,255,255,0.13)` |
+| ink (primary) | `#0b0b0b` | `#ffffff` |
+| ink2 (secondary) | `#52514e` | `#c3c2b7` |
+| ink3 (muted) | `#898781` | `#898781` |
+| accent (interactive) | `#2a78d6` | `#3987e5` |
+
+Card radius 8–12px. Status colors (badges/alerts only, never as series colors)
+are shared across themes and clear 3:1 on both surfaces: good `#0ca30c`, warning
+`#fab219`, serious `#ec835a`, critical `#d03b3b`. Status badges = icon/dot + label
+(never color alone). Font: system-ui sans stack; stat-tile values semibold,
+proportional figures; `tabular-nums` only inside tables. Keep chrome quiet — the
+data is the only loud thing.
 
 ## 11. Seed script — `app/seed.py` (`python -m app.seed [--no-runs] [--force]`)
 

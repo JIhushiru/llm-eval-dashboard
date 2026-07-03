@@ -150,6 +150,33 @@ npm run dev
 
 Open <http://localhost:3000>. Tables are created automatically on backend startup.
 
+### Option B (shortcut) — both servers, one command
+
+After the one-time setup above (create the backend `.venv` + install its
+requirements, and `npm install` in `frontend/`), run both together from the
+repo root:
+
+```bash
+npm run dev
+```
+
+This runs [`dev.mjs`](dev.mjs), a zero-dependency Node launcher (no root
+`npm install` needed) that starts the FastAPI backend and the Next.js frontend
+side by side, streams both logs with a colored `[backend]`/`[frontend]` prefix,
+and stops both on Ctrl+C. Backend → <http://localhost:8000>, frontend →
+<http://localhost:3000>.
+
+If 8000 is busy — or Windows has it in a reserved range (uvicorn reports
+`WinError 10013 ... forbidden by its access permissions`) — pick another port;
+the frontend is pointed at it automatically:
+
+```bash
+BACKEND_PORT=8010 npm run dev      # macOS/Linux, or Git Bash on Windows
+$env:BACKEND_PORT=8010; npm run dev  # PowerShell
+```
+
+`FRONTEND_PORT` overrides 3000 the same way.
+
 ### Configuration
 
 Copy `backend/.env.example` to `backend/.env` and fill in what you need.

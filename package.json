@@ -1,0 +1,9 @@
+{
+  "name": "evalforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run the EvalForge backend (FastAPI) and frontend (Next.js) together for local dev.",
+  "scripts": {
+    "dev": "node dev.mjs"
+  }
+}

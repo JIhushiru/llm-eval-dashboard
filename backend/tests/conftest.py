@@ -28,6 +28,11 @@ def temp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("EVALFORGE_DB_PATH", str(tmp_path / "evalforge_test.db"))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+    # Hardening features are opt-in; neutralize them by default so the suite is
+    # deterministic regardless of the developer's environment. Dedicated tests
+    # enable them explicitly.
+    monkeypatch.setenv("EVALFORGE_API_TOKEN", "")
+    monkeypatch.setenv("EVALFORGE_RATE_LIMIT_PER_MINUTE", "0")
     get_settings.cache_clear()
     engine = database._make_engine()
     monkeypatch.setattr(database, "engine", engine)

@@ -1,7 +1,12 @@
 import type { Config } from "tailwindcss";
 
-// Visual system tokens from SPEC section 10 (light mode).
+// Visual system tokens from SPEC section 10. Colors resolve to CSS variables
+// (RGB channels, so Tailwind opacity modifiers like `bg-good/10` still work)
+// defined in globals.css and flipped per theme via the [data-theme] attribute.
+const rgbVar = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -10,19 +15,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        page: "#f9f9f7",
-        surface: "#fcfcfb",
-        hairline: "rgba(11,11,11,0.10)",
-        ink: "#0b0b0b",
-        ink2: "#52514e",
-        ink3: "#898781",
-        accent: "#2a78d6",
-        good: "#0ca30c",
-        warning: "#fab219",
-        serious: "#ec835a",
-        critical: "#d03b3b",
-        grid: "#e1e0d9",
-        axis: "#c3c2b7",
+        page: rgbVar("page"),
+        surface: rgbVar("surface"),
+        hairline: "var(--hairline)",
+        ink: rgbVar("ink"),
+        ink2: rgbVar("ink2"),
+        ink3: rgbVar("ink3"),
+        accent: rgbVar("accent"),
+        good: rgbVar("good"),
+        warning: rgbVar("warning"),
+        serious: rgbVar("serious"),
+        critical: rgbVar("critical"),
+        grid: rgbVar("grid"),
+        axis: rgbVar("axis"),
       },
       fontFamily: {
         sans: [

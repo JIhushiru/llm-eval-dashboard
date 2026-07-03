@@ -165,10 +165,30 @@ that provider.
 | `DEFAULT_JUDGE_MODEL` | `anthropic:claude-opus-4-8` | Judge used when a run doesn't specify one. |
 | `GENERATION_MAX_TOKENS` | `1024` | Max tokens for candidate generations. |
 | `JUDGE_MAX_TOKENS` | `1024` | Max tokens for judge calls. |
+| `EVALFORGE_API_TOKEN` | *(unset)* | Shared bearer-token gate. Unset → open API. Set → all `/api` (except `/api/health`) requires `Authorization: Bearer <token>`. |
+| `EVALFORGE_RATE_LIMIT_PER_MINUTE` | `120` | Per-client (token, else IP) request cap over a 60s window; `0` disables. Over the cap → `429`. |
+| `EVALFORGE_USE_MIGRATIONS` | `false` | `true` → startup runs Alembic `upgrade head` instead of `create_all`. The compose file sets it `true`. |
 
-The frontend has one variable, set at **build time** for production builds:
+The frontend has two build-time variables (baked into the client bundle):
 `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) — the URL the *browser*
-uses to reach the API.
+uses to reach the API — and `NEXT_PUBLIC_API_TOKEN` (default empty) — must match
+the backend's `EVALFORGE_API_TOKEN` when the auth gate is enabled.
+
+### Hardening (optional)
+
+All off/relaxed by default so local dev stays zero-config. See [`docs/SPEC.md`](docs/SPEC.md) §13–14.
+
+- **Auth gate** — set `EVALFORGE_API_TOKEN` (and build the frontend with a
+  matching `NEXT_PUBLIC_API_TOKEN`) to require a shared bearer token. Export
+  download links pass it as `?token=…` since anchors can't set headers.
+- **Rate limiting** — `EVALFORGE_RATE_LIMIT_PER_MINUTE` caps per-client
+  requests; `/api/health` is exempt. In-memory/per-process (scale-out wants Redis).
+- **Pagination** — `GET /api/suites` and `GET /api/runs` accept `?limit=&offset=`
+  and return the total in the `X-Total-Count` header; omitting them returns the
+  full list (backward compatible).
+- **Migrations** — schema is versioned with Alembic under `backend/migrations/`.
+  For a DB created via `create_all`, adopt migrations once with `alembic stamp head`,
+  then evolve via `alembic revision --autogenerate -m "…"` and `alembic upgrade head`.
 
 ### Seed demo data
 

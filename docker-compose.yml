@@ -15,6 +15,13 @@ services:
     environment:
       # SQLite lives on a named volume so runs survive container rebuilds.
       EVALFORGE_DB_PATH: /data/evalforge.db
+      # Managed deployment: bring the schema up with Alembic on startup.
+      EVALFORGE_USE_MIGRATIONS: "true"
+      # Optional hardening. Set EVALFORGE_API_TOKEN (shell env or backend/.env)
+      # to require a shared bearer token; the frontend build arg below must
+      # match. Rate limit is per-client requests/min (0 disables).
+      EVALFORGE_API_TOKEN: ${EVALFORGE_API_TOKEN:-}
+      EVALFORGE_RATE_LIMIT_PER_MINUTE: ${EVALFORGE_RATE_LIMIT_PER_MINUTE:-120}
       # Inside a container, "localhost" is not the host machine — point Ollama
       # at the host gateway by default (override via shell env or root .env).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -32,6 +39,9 @@ services:
         # *browser* uses to reach the API, hence localhost (published port),
         # not the compose-internal service name.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        # Must match the backend's EVALFORGE_API_TOKEN when the gate is enabled.
+        # Also baked in at build time (client-exposed shared secret).
+        NEXT_PUBLIC_API_TOKEN: ${EVALFORGE_API_TOKEN:-}
     ports:
       - "3000:3000"
     depends_on:

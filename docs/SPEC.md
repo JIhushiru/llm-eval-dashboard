@@ -26,8 +26,15 @@ backend/            FastAPI app (Python 3.11+ compatible; local dev uses 3.12)
                       OLLAMA_BASE_URL default http://localhost:11434,
                       EVALFORGE_DB_PATH default ./evalforge.db,
                       DEFAULT_JUDGE_MODEL default "anthropic:claude-opus-4-8",
-                      GENERATION_MAX_TOKENS default 1024, JUDGE_MAX_TOKENS default 1024)
-    database.py       SQLAlchemy engine/session factory; create_all on startup
+                      GENERATION_MAX_TOKENS default 1024, JUDGE_MAX_TOKENS default 1024,
+                      EVALFORGE_API_TOKEN default None (auth gate; §14),
+                      EVALFORGE_RATE_LIMIT_PER_MINUTE default 120 (§14),
+                      EVALFORGE_USE_MIGRATIONS default False (§13))
+    database.py       SQLAlchemy engine/session factory; startup runs Alembic
+                      migrations when EVALFORGE_USE_MIGRATIONS else create_all
+    security.py       shared-token auth dependency (§14)
+    ratelimit.py      in-memory per-client rate-limit ASGI middleware (§14)
+    migrations/       Alembic env + versioned revisions (§13)
     models.py         ORM models (SQLAlchemy 2.0 Mapped[] style)
     schemas.py        Pydantic v2 models for ALL API request/response bodies
     main.py           FastAPI app, CORS (allow http://localhost:3000), routers, startup
@@ -252,6 +259,8 @@ class LLMAdapter(ABC):
 - `GET  /api/health` → `{"status": "ok"}`
 - `GET  /api/backends` → `[{provider, available, reason, models}]`
 - `GET  /api/suites` → `[{id, name, description, created_at, case_count, run_count}]`
+  (optional `?limit=&offset=` pagination; `X-Total-Count` header carries the
+  unpaginated total. No params → full list, as before.)
 - `POST /api/suites` `{name, description?}` → suite (409 on duplicate name)
 - `GET  /api/suites/{id}` → suite + `cases: [...]`
 - `PUT  /api/suites/{id}` `{name?, description?}` → suite
@@ -263,7 +272,9 @@ class LLMAdapter(ABC):
   → run (status `pending`), background execution kicked off
 - `GET  /api/runs?suite_id=` → newest-first `[{id, suite_id, suite_name, prompt_version, models,
   judge_model, status, error, created_at, completed_at, progress: {total, done}}]`
-  (`total` = cases×models; `done` = case_results written)
+  (`total` = cases×models; `done` = case_results written).
+  Optional `?limit=&offset=` pagination; `X-Total-Count` header carries the
+  unpaginated total (respecting the `suite_id` filter). No params → full list.
 - `GET  /api/runs/{id}` → run detail: run fields + `results: [CaseResultOut]` (includes case
   prompt & expected_behavior inline) + `stats: [ModelStats]` where ModelStats =
   `{model, n_scored, mean, std, ci_low, ci_high, checks_pass_rate (0-1 or null),
@@ -401,23 +412,40 @@ SQLite DB per test (env override + dependency override) and a FastAPI `TestClien
 
 Target: the scoring logic (stats/checks/judge) is the priority per the product brief.
 
-## 13. Docker
+## 13. Docker & migrations
 
-- `backend/Dockerfile`: `python:3.11-slim`, install requirements, copy app,
-  `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
+- `backend/Dockerfile`: `python:3.11-slim`, install requirements, copy app +
+  `alembic.ini` + `migrations/`, `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
 - `frontend/Dockerfile`: `node:20-alpine`, `npm ci`, `npm run build`, `npm start`
-  (port 3000). Accept `NEXT_PUBLIC_API_URL` build arg (default `http://localhost:8000`).
+  (port 3000). Accept `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_API_TOKEN` build args.
 - `docker-compose.yml` (root): service `backend` (8000:8000, `env_file: backend/.env`
   optional via `${...:-}` or documented, volume `evalforge-data:/data` with
-  `EVALFORGE_DB_PATH=/data/evalforge.db`), service `frontend` (3000:3000,
-  `depends_on: backend`). One command: `docker-compose up --build`.
+  `EVALFORGE_DB_PATH=/data/evalforge.db`, `EVALFORGE_USE_MIGRATIONS=true`), service
+  `frontend` (3000:3000, `depends_on: backend`). One command: `docker-compose up --build`.
+
+**Migrations (Alembic).** Schema is versioned under `backend/migrations/`. Zero-config
+local dev/tests use `create_all` (idempotent). Managed deployments set
+`EVALFORGE_USE_MIGRATIONS=true` so startup runs `alembic upgrade head` instead.
+An existing create_all DB adopts migrations with a one-time `alembic stamp head`;
+thereafter evolve schema via `alembic revision --autogenerate -m "…"` + `upgrade head`.
+The initial revision `0001_initial` mirrors §3. `render_as_batch` is on for SQLite ALTERs.
 
 ## 14. Quality bar
 
 - Python: type hints everywhere; Pydantic v2 for every API schema; SQLAlchemy 2.0
   `Mapped[]`/`mapped_column` style; no bare `except:`; module docstrings brief.
 - TypeScript: `strict: true`; shared types in `lib/api.ts`; no `any` unless unavoidable.
-- No auth (local tool). CORS open to localhost:3000.
+- **Auth (opt-in shared-token gate).** Default is open (local tool). When
+  `EVALFORGE_API_TOKEN` is set, every `/api` request except `GET /api/health`
+  must present it as `Authorization: Bearer <token>` (or, for the plain-anchor
+  export links, `?token=<token>`); otherwise 401. Constant-time compare. This
+  is a coarse shared secret, not per-user auth.
+- **Rate limiting.** `EVALFORGE_RATE_LIMIT_PER_MINUTE` (default 120, 0 disables)
+  caps requests per client (bearer token if present, else IP) over a 60s
+  sliding window; over the cap → 429 with `Retry-After`. `/api/health` is
+  exempt. In-memory, per-process (single-instance tool; use Redis to scale out).
+- CORS open to localhost:3000 (and it decorates 429/401 responses so the
+  browser can read them).
 - README (root): what it is, mermaid architecture diagram, quickstart (local dev +
   docker), screenshots placeholders, .env setup, seed instructions, and a
   **"Design decisions"** section explaining: why bootstrap percentile CIs (1000

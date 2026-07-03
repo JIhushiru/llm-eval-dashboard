@@ -1,0 +1,41 @@
+# EvalForge — one command: docker-compose up --build
+#
+# Requires Docker Compose v2.24+ (for the optional env_file syntax below).
+# API keys are read from backend/.env if it exists; without keys the stack
+# still runs, providers just report "unavailable" and the UI disables them.
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      # SQLite lives on a named volume so runs survive container rebuilds.
+      EVALFORGE_DB_PATH: /data/evalforge.db
+      # Inside a container, "localhost" is not the host machine — point Ollama
+      # at the host gateway by default (override via shell env or root .env).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    volumes:
+      - evalforge-data:/data
+    extra_hosts:
+      # Makes host.docker.internal resolve on Linux (no-op on Docker Desktop).
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the client bundle at build time. This is the URL the
+        # *browser* uses to reach the API, hence localhost (published port),
+        # not the compose-internal service name.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  evalforge-data:

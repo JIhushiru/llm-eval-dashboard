@@ -41,6 +41,25 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
 
+def run_migrations() -> None:
+    """Bring the database to the latest Alembic revision (`upgrade head`).
+
+    Used by the managed-deployment startup path (EVALFORGE_USE_MIGRATIONS=true).
+    Script location and DB URL are set programmatically so this works regardless
+    of the process working directory (e.g. inside the container).
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    backend_root = Path(__file__).resolve().parent.parent
+    cfg = Config()
+    cfg.set_main_option("script_location", str(backend_root / "migrations"))
+    cfg.set_main_option(
+        "sqlalchemy.url", f"sqlite:///{Path(get_settings().evalforge_db_path).as_posix()}"
+    )
+    command.upgrade(cfg, "head")
+
+
 def get_db() -> Iterator[Session]:
     db = SessionLocal()
     try:

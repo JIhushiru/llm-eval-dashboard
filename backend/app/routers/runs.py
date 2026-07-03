@@ -2,7 +2,15 @@
 
 import json
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -82,10 +90,22 @@ async def create_run(
 
 
 @router.get("", response_model=list[RunListItem])
-def list_runs(suite_id: int | None = None, db: Session = Depends(get_db)) -> list[RunListItem]:
+def list_runs(
+    response: Response,
+    suite_id: int | None = None,
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[RunListItem]:
+    count_query = select(func.count()).select_from(Run)
     query = select(Run).order_by(Run.created_at.desc(), Run.id.desc())
     if suite_id is not None:
+        count_query = count_query.where(Run.suite_id == suite_id)
         query = query.where(Run.suite_id == suite_id)
+    response.headers["X-Total-Count"] = str(db.scalar(count_query) or 0)
+    query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
     runs = db.scalars(query).all()
     return [export.run_list_item(db, run) for run in runs]
 

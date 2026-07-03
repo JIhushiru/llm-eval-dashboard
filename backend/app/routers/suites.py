@@ -1,6 +1,6 @@
 """Suite CRUD and per-suite score history."""
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -27,8 +27,18 @@ def _get_suite_or_404(db: Session, suite_id: int) -> Suite:
 
 
 @router.get("", response_model=list[SuiteListItem])
-def list_suites(db: Session = Depends(get_db)) -> list[SuiteListItem]:
-    suites = db.scalars(select(Suite).order_by(Suite.created_at, Suite.id)).all()
+def list_suites(
+    response: Response,
+    limit: int | None = Query(None, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[SuiteListItem]:
+    total = db.scalar(select(func.count()).select_from(Suite)) or 0
+    response.headers["X-Total-Count"] = str(total)
+    query = select(Suite).order_by(Suite.created_at, Suite.id).offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    suites = db.scalars(query).all()
     items: list[SuiteListItem] = []
     for suite in suites:
         case_count = db.scalar(

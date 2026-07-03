@@ -11,11 +11,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTheme, type ResolvedTheme } from "@/components/ThemeProvider";
 import type { HistoryPoint, HistorySeries } from "@/lib/api";
 import { formatDate, fmtScore } from "@/lib/format";
 
-// Fixed categorical palette in slot order — never cycled; the color follows
-// the model, not its rank (SPEC chart spec).
+// Fixed categorical palette in slot order — never cycled; the color follows the
+// model, not its rank (SPEC chart spec). Each theme has its own validated steps
+// (same hue identity per slot), selected for that mode's surface — not an
+// auto-flip. Both sets pass the dataviz validator on their surface.
 export const SERIES_PALETTE = [
   "#2a78d6",
   "#1baf7a",
@@ -26,13 +29,50 @@ export const SERIES_PALETTE = [
   "#e87ba4",
   "#eb6834",
 ] as const;
+const SERIES_PALETTE_DARK = [
+  "#3987e5",
+  "#199e70",
+  "#c98500",
+  "#008300",
+  "#9085e9",
+  "#e66767",
+  "#d55181",
+  "#d95926",
+] as const;
 
+// Status colors (regression/improvement dots) clear 3:1 on both surfaces; kept.
 const REGRESSION_RED = "#d03b3b";
 const IMPROVEMENT_GREEN = "#0ca30c";
-const SURFACE = "#fcfcfb";
-const GRID = "#e1e0d9";
-const AXIS_LINE = "#c3c2b7";
-const TICK_INK = "#898781";
+
+// Per-theme chart chrome: recessive gridlines/axis, muted ticks, a dot ring in
+// the surface color (so overlapping marks read as punched out), and the CI-band
+// fill opacity (a touch higher on dark, where fills read fainter).
+interface ChartChrome {
+  palette: readonly string[];
+  grid: string;
+  axis: string;
+  tick: string;
+  ring: string;
+  bandOpacity: number;
+}
+const CHROME: Record<ResolvedTheme, ChartChrome> = {
+  light: {
+    palette: SERIES_PALETTE,
+    grid: "#e1e0d9",
+    axis: "#c3c2b7",
+    tick: "#898781",
+    ring: "#fcfcfb",
+    bandOpacity: 0.1,
+  },
+  dark: {
+    palette: SERIES_PALETTE_DARK,
+    grid: "#2c2c2a",
+    axis: "#383835",
+    tick: "#898781",
+    ring: "#1a1a19",
+    bandOpacity: 0.14,
+  },
+};
 
 export interface ChartRow {
   runId: number;
@@ -66,10 +106,13 @@ export function mergeHistoryRows(series: HistorySeries[]): ChartRow[] {
 
 // Stable slot assignment: slot follows the model's position in the full
 // series list, so filtering never repaints survivors.
-export function paletteColorMap(models: string[]): Record<string, string> {
+export function paletteColorMap(
+  models: string[],
+  palette: readonly string[] = SERIES_PALETTE,
+): Record<string, string> {
   const map: Record<string, string> = {};
   models.forEach((m, i) => {
-    map[m] = SERIES_PALETTE[i % SERIES_PALETTE.length];
+    map[m] = palette[i % palette.length];
   });
   return map;
 }
@@ -84,6 +127,7 @@ interface DotRenderProps {
 function makeDot(
   model: string,
   color: string,
+  ring: string,
 ): (props: DotRenderProps) => ReactElement {
   const DotShape = (props: DotRenderProps): ReactElement => {
     const { cx, cy, payload, index } = props;
@@ -94,40 +138,16 @@ function makeDot(
     const key = `dot-${model}-${point.run_id}`;
     if (point.flag === "regression") {
       return (
-        <circle
-          key={key}
-          cx={cx}
-          cy={cy}
-          r={6}
-          fill={REGRESSION_RED}
-          stroke="#ffffff"
-          strokeWidth={2}
-        />
+        <circle key={key} cx={cx} cy={cy} r={6} fill={REGRESSION_RED} stroke={ring} strokeWidth={2} />
       );
     }
     if (point.flag === "improvement") {
       return (
-        <circle
-          key={key}
-          cx={cx}
-          cy={cy}
-          r={6}
-          fill={IMPROVEMENT_GREEN}
-          stroke="#ffffff"
-          strokeWidth={2}
-        />
+        <circle key={key} cx={cx} cy={cy} r={6} fill={IMPROVEMENT_GREEN} stroke={ring} strokeWidth={2} />
       );
     }
     return (
-      <circle
-        key={key}
-        cx={cx}
-        cy={cy}
-        r={4}
-        fill={color}
-        stroke={SURFACE}
-        strokeWidth={2}
-      />
+      <circle key={key} cx={cx} cy={cy} r={4} fill={color} stroke={ring} strokeWidth={2} />
     );
   };
   return DotShape;
@@ -195,11 +215,16 @@ function ChartTooltip({
 }
 
 export default function ScoreChart({ series }: { series: HistorySeries[] }) {
+  const { resolved } = useTheme();
+  const chrome = CHROME[resolved];
   // Slots are never cycled: beyond 8 series the extras are omitted and noted.
   const shown = series.slice(0, SERIES_PALETTE.length);
   const omitted = series.length - shown.length;
   const models = shown.map((s) => s.model);
-  const colors = paletteColorMap(series.map((s) => s.model));
+  const colors = paletteColorMap(
+    series.map((s) => s.model),
+    chrome.palette,
+  );
   const rows = mergeHistoryRows(shown);
 
   if (rows.length === 0) {
@@ -219,24 +244,24 @@ export default function ScoreChart({ series }: { series: HistorySeries[] }) {
             data={rows}
             margin={{ top: 10, right: 16, bottom: 4, left: 0 }}
           >
-            <CartesianGrid stroke={GRID} strokeWidth={1} vertical={false} />
+            <CartesianGrid stroke={chrome.grid} strokeWidth={1} vertical={false} />
             <XAxis
               dataKey="promptVersion"
-              tick={{ fill: TICK_INK, fontSize: 12 }}
-              tickLine={{ stroke: AXIS_LINE }}
-              axisLine={{ stroke: AXIS_LINE }}
+              tick={{ fill: chrome.tick, fontSize: 12 }}
+              tickLine={{ stroke: chrome.axis }}
+              axisLine={{ stroke: chrome.axis }}
               padding={{ left: 16, right: 16 }}
             />
             <YAxis
               domain={[1, 5]}
               ticks={[1, 2, 3, 4, 5]}
-              tick={{ fill: TICK_INK, fontSize: 12 }}
-              tickLine={{ stroke: AXIS_LINE }}
-              axisLine={{ stroke: AXIS_LINE }}
+              tick={{ fill: chrome.tick, fontSize: 12 }}
+              tickLine={{ stroke: chrome.axis }}
+              axisLine={{ stroke: chrome.axis }}
               width={32}
             />
             <Tooltip
-              cursor={{ stroke: AXIS_LINE, strokeDasharray: "3 3" }}
+              cursor={{ stroke: chrome.axis, strokeDasharray: "3 3" }}
               content={({ active, payload }) => (
                 <ChartTooltip
                   active={active}
@@ -256,7 +281,7 @@ export default function ScoreChart({ series }: { series: HistorySeries[] }) {
                 }}
                 stroke="none"
                 fill={colors[model]}
-                fillOpacity={0.1}
+                fillOpacity={chrome.bandOpacity}
                 connectNulls
                 isAnimationActive={false}
                 activeDot={false}
@@ -273,7 +298,7 @@ export default function ScoreChart({ series }: { series: HistorySeries[] }) {
                 strokeLinecap="round"
                 connectNulls
                 isAnimationActive={false}
-                dot={makeDot(model, colors[model])}
+                dot={makeDot(model, colors[model], chrome.ring)}
                 activeDot={false}
               />
             ))}
@@ -302,16 +327,16 @@ export default function ScoreChart({ series }: { series: HistorySeries[] }) {
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 px-2 text-xs text-ink3">
         <span className="flex items-center gap-1.5">
           <span
-            className="h-3 w-3 rounded-full border-2 border-white"
-            style={{ background: REGRESSION_RED }}
+            className="h-3 w-3 rounded-full border-2"
+            style={{ background: REGRESSION_RED, borderColor: chrome.ring }}
             aria-hidden
           />
           regression
         </span>
         <span className="flex items-center gap-1.5">
           <span
-            className="h-3 w-3 rounded-full border-2 border-white"
-            style={{ background: IMPROVEMENT_GREEN }}
+            className="h-3 w-3 rounded-full border-2"
+            style={{ background: IMPROVEMENT_GREEN, borderColor: chrome.ring }}
             aria-hidden
           />
           improvement

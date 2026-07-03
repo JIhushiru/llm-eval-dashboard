@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },
@@ -36,6 +37,9 @@ export default function Nav() {
               </Link>
             );
           })}
+        </div>
+        <div className="ml-auto">
+          <ThemeToggle />
         </div>
       </nav>
     </header>
